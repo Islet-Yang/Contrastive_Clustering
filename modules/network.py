@@ -38,3 +38,57 @@ class Network(nn.Module):
         c = self.cluster_projector(h)
         c = torch.argmax(c, dim=1)
         return c
+
+class T_Network(nn.Module):
+    def __init__(self, resnet, feature_dim, class_num):
+        super(T_Network, self).__init__()
+        self.resnet = resnet
+        self.feature_dim = feature_dim
+        self.cluster_num = class_num
+        self.embedding_dim = 64
+        
+        self.embedding_layer = nn.Sequential(
+            nn.Linear(self.resnet.rep_dim + self.embedding_dim, self.resnet.rep_dim),
+            nn.ReLU()
+        )
+        
+        self.instance_projector = nn.Sequential(
+            nn.Linear(self.resnet.rep_dim, self.resnet.rep_dim),
+            nn.ReLU(),
+            nn.Linear(self.resnet.rep_dim, self.feature_dim),
+        )
+        
+        self.cluster_projector = nn.Sequential(
+            nn.Linear(self.resnet.rep_dim, self.resnet.rep_dim),
+            nn.ReLU(),
+            nn.Linear(self.resnet.rep_dim, self.cluster_num),
+            nn.Softmax(dim=1)
+        )
+
+    def forward(self, x_i, x_j, embedding_v = None):
+        h_i = self.resnet(x_i)
+        h_j = self.resnet(x_j)
+
+        # print(f"old_embedding_v.shape: {embedding_v.shape}")
+        # embedding_v = embedding_v.unsqueeze(0).expand(h_i.size(0), -1)
+        # print(f"new_embedding_v.shape: {embedding_v.shape}")
+        # input("Press Enter to continue...")
+        h_i = torch.cat((h_i, embedding_v), dim=1)
+        h_j = torch.cat((h_j, embedding_v), dim=1)
+
+        h_i = self.embedding_layer(h_i)
+        h_j = self.embedding_layer(h_j)
+        
+        z_i = normalize(self.instance_projector(h_i), dim=1)
+        z_j = normalize(self.instance_projector(h_j), dim=1)
+
+        c_i = self.cluster_projector(h_i)
+        c_j = self.cluster_projector(h_j)
+        
+        return z_i, z_j, c_i, c_j
+
+    def forward_cluster(self, x):
+        h = self.resnet(x)
+        c = self.cluster_projector(h)
+        c = torch.argmax(c, dim=1)
+        return c
