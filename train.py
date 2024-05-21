@@ -177,10 +177,12 @@ if __name__ == "__main__":
     # initialize model
     res = resnet.get_resnet(args.resnet)
     
-    if args.transfer:
+    if args.generate:
+        model = network.T_G_Network(res, args.feature_dim, args.class_num, args.image_size)
+    elif args.transfer:
         model = network.T_Network(res, args.feature_dim, args.class_num)
     else:
-        model = network.Network(res, args.feature_dim, args.class_num)
+        model = network.Network(res, args.feature_dim, class_num)
         
     model = model.to(args.cuda_device)
     # optimizer / loss
@@ -197,13 +199,23 @@ if __name__ == "__main__":
     criterion_instance = contrastive_loss.InstanceLoss(args.batch_size, args.instance_temperature, loss_device).to(
         loss_device)
     criterion_cluster = contrastive_loss.ClusterLoss(args.class_num, args.cluster_temperature, loss_device).to(loss_device)
+    
     # train
     with open("loss.txt", "a") as f:
         for epoch in range(args.start_epoch, args.epochs):
             lr = optimizer.param_groups[0]["lr"]
             loss_epoch = train()
-            if epoch % 10 == 0:
-                save_model(args, model, optimizer, epoch)
+            
+            # Save model every epoch
+            save_model(args, model, optimizer, epoch)
+            
+            # Remove the previous epoch's model unless it's a multiple of 10
+            if epoch > args.start_epoch and (epoch - 1) % 10 != 0:
+                prev_model_fp = os.path.join(args.model_path, f"checkpoint_{epoch - 1}.tar")
+                if os.path.exists(prev_model_fp):
+                    os.remove(prev_model_fp)
+            
             print(f"Epoch [{epoch}/{args.epochs}]\t Loss: {loss_epoch / len(data_loader)}")
             f.write(f"Epoch [{epoch}/{args.epochs}]\t Loss: {loss_epoch / len(data_loader)}\n")
-        save_model(args, model, optimizer, args.epochs)
+        
+    save_model(args, model, optimizer, args.epochs)
